@@ -830,35 +830,49 @@ export default function FinanceTracker() {
                   />
 
                   <label style={{ ...label, color: "#9AA0AC" }}>Imagen</label>
-                  <label
-                    htmlFor="goal-image-input"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      width: "100%",
-                      height: 220,
-                      borderRadius: 12,
-                      border: "1px dashed #3A4048",
-                      background: goalForm.image ? `#0B0C0E` : "#12151B",
-                      backgroundImage: goalForm.image ? `url(${goalForm.image})` : "none",
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                      cursor: "pointer",
-                      marginBottom: 14,
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {!goalForm.image && (
-                      <>
-                        <ImagePlus size={26} color="#9AA0AC" />
-                        <span style={{ color: "#9AA0AC", fontSize: 13 }}>Tocá para elegir una foto</span>
-                      </>
-                    )}
-                    {goalForm.image && (
+                  {!goalForm.image && (
+                    <label
+                      htmlFor="goal-image-input"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        width: "100%",
+                        height: 220,
+                        borderRadius: 12,
+                        border: "1px dashed #3A4048",
+                        background: "#12151B",
+                        cursor: "pointer",
+                        marginBottom: 14,
+                      }}
+                    >
+                      <ImagePlus size={26} color="#9AA0AC" />
+                      <span style={{ color: "#9AA0AC", fontSize: 13 }}>Tocá para elegir una foto</span>
+                      <input id="goal-image-input" type="file" accept="image/*" onChange={handleGoalImage} style={{ display: "none" }} />
+                    </label>
+                  )}
+                  {goalForm.image && (
+                    <label
+                      htmlFor="goal-image-input"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        borderRadius: 12,
+                        background: "#0B0C0E",
+                        border: "1px solid #2A313B",
+                        cursor: "pointer",
+                        marginBottom: 14,
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src={goalForm.image}
+                        alt="Objetivo"
+                        style={{ width: "100%", height: "auto", maxHeight: 420, objectFit: "contain", display: "block" }}
+                      />
                       <span
                         style={{
                           position: "absolute",
@@ -873,9 +887,9 @@ export default function FinanceTracker() {
                       >
                         Cambiar foto
                       </span>
-                    )}
-                    <input id="goal-image-input" type="file" accept="image/*" onChange={handleGoalImage} style={{ display: "none" }} />
-                  </label>
+                      <input id="goal-image-input" type="file" accept="image/*" onChange={handleGoalImage} style={{ display: "none" }} />
+                    </label>
+                  )}
 
                   <label style={{ ...label, color: "#9AA0AC" }}>Precio</label>
                   <input
@@ -910,23 +924,37 @@ export default function FinanceTracker() {
                     </button>
                   </div>
 
-                  <div
-                    style={{
-                      width: "100%",
-                      height: 220,
-                      borderRadius: 12,
-                      background: goal.image ? "#0B0C0E" : "#12151B",
-                      backgroundImage: goal.image ? `url(${goal.image})` : "none",
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                      display: goal.image ? "block" : "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 16,
-                    }}
-                  >
-                    {!goal.image && <Target size={30} color="#3A4048" />}
-                  </div>
+                  {goal.image ? (
+                    <img
+                      src={goal.image}
+                      alt={goal.name}
+                      style={{
+                        width: "100%",
+                        height: "auto",
+                        maxHeight: 420,
+                        objectFit: "contain",
+                        borderRadius: 12,
+                        background: "#0B0C0E",
+                        display: "block",
+                        marginBottom: 16,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 220,
+                        borderRadius: 12,
+                        background: "#12151B",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <Target size={30} color="#3A4048" />
+                    </div>
+                  )}
 
                   {(() => {
                     const pct = Math.min(100, Math.round((goal.saved / goal.price) * 100));
