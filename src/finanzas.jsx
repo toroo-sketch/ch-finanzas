@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, Trash2, ArrowUpRight, ArrowDownRight, ArrowUp, ArrowDown, Wallet, HandCoins, ArrowLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, Trash2, ArrowUpRight, ArrowDownRight, ArrowUp, ArrowDown, Wallet, HandCoins, ArrowLeft, Share2, Target, Pencil, ImagePlus } from "lucide-react";
 
 const CATEGORIES = {
   ingreso: ["Trabajo", "Ventas", "Regalo", "Otro"],
@@ -52,6 +52,13 @@ export default function FinanceTracker() {
   const [loansLoaded, setLoansLoaded] = useState(false);
   const [loanModal, setLoanModal] = useState(null); // {editingId, name, amount, date}
   const loanSaveTimer = useRef(null);
+
+  const [goal, setGoal] = useState(null); // {name, image, price, saved}
+  const [goalLoaded, setGoalLoaded] = useState(false);
+  const goalSaveTimer = useRef(null);
+  const [goalFormOpen, setGoalFormOpen] = useState(false);
+  const [goalForm, setGoalForm] = useState({ name: "", image: "", price: "" });
+  const [goalAddAmount, setGoalAddAmount] = useState("");
   const [cursor, setCursor] = useState(new Date(2026, 8, 1));
   const [modal, setModal] = useState(null); // {editingId, desc, category, type, amount, date}
   const [showAll, setShowAll] = useState(false);
@@ -123,6 +130,32 @@ export default function FinanceTracker() {
       }
     }, 300);
   }, [loans, loansLoaded]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("finanzas_goal");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") setGoal(parsed);
+      }
+    } catch (e) {
+      // no hay objetivo guardado todavía
+    } finally {
+      setGoalLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!goalLoaded) return;
+    clearTimeout(goalSaveTimer.current);
+    goalSaveTimer.current = setTimeout(() => {
+      try {
+        window.localStorage.setItem("finanzas_goal", JSON.stringify(goal));
+      } catch (e) {
+        console.error("No se pudo guardar", e);
+      }
+    }, 300);
+  }, [goal, goalLoaded]);
 
   const monthMovs = useMemo(() => {
     const y = cursor.getFullYear(), m = cursor.getMonth();
@@ -253,6 +286,52 @@ export default function FinanceTracker() {
     setLoanModal(null);
   }
 
+  async function shareOrDownload(filename, content, mimeType = "text/csv") {
+    try {
+      if (navigator.share && navigator.canShare) {
+        const file = new File([content], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      }
+    } catch (e) {
+      // si el usuario cancela el share o falla, seguimos con la descarga
+    }
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function toCsv(rows) {
+    return rows
+      .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+  }
+
+  function exportFinanzas() {
+    const rows = [["Fecha", "Descripción", "Categoría", "Tipo", "Monto"]];
+    monthMovs.forEach((mv) => rows.push([mv.date, mv.desc, mv.category, mv.type, mv.amount]));
+    rows.push([]);
+    rows.push(["Ingresos totales", "", "", "", totals.ingresos]);
+    rows.push(["Gastos totales", "", "", "", totals.gastos]);
+    rows.push(["Saldo final", "", "", "", totals.saldo]);
+    const filename = `finanzas_${monthLabel(cursor).replace(/\s+/g, "_")}.csv`;
+    shareOrDownload(filename, toCsv(rows));
+  }
+
+  function exportLoans() {
+    const rows = [["Nombre", "Monto", "Fecha", "Estado"]];
+    sortedLoans.forEach((ln) => rows.push([ln.name, ln.amount, ln.date, ln.paid ? "Pagado" : "Pendiente"]));
+    shareOrDownload("prestamos.csv", toCsv(rows));
+  }
+
   function deleteLoan() {
     setLoans((prev) => prev.filter((ln) => ln.id !== loanModal.editingId));
     setMovs((prev) => prev.filter((mv) => mv.id !== `lm-${loanModal.editingId}`));
@@ -284,6 +363,46 @@ export default function FinanceTracker() {
       })
       .map(({ ln }) => ln);
   }, [loans]);
+
+  function openGoalForm() {
+    setGoalForm(
+      goal
+        ? { name: goal.name, image: goal.image || "", price: String(goal.price) }
+        : { name: "", image: "", price: "" }
+    );
+    setGoalFormOpen(true);
+  }
+
+  function handleGoalImage(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setGoalForm((f) => ({ ...f, image: reader.result }));
+    reader.readAsDataURL(file);
+  }
+
+  function saveGoalForm() {
+    if (!goalForm.name.trim() || !goalForm.price || Number(goalForm.price) <= 0) return;
+    setGoal((prev) => ({
+      name: goalForm.name.trim(),
+      image: goalForm.image || "",
+      price: Number(goalForm.price),
+      saved: prev ? prev.saved : 0,
+    }));
+    setGoalFormOpen(false);
+  }
+
+  function deleteGoal() {
+    setGoal(null);
+    setGoalFormOpen(false);
+  }
+
+  function addGoalContribution() {
+    const amt = Number(goalAddAmount);
+    if (!amt || amt <= 0 || !goal) return;
+    setGoal((prev) => ({ ...prev, saved: prev.saved + amt }));
+    setGoalAddAmount("");
+  }
 
   const visibleMovs = showAll ? monthMovs : monthMovs.slice(0, 4);
 
@@ -402,6 +521,29 @@ export default function FinanceTracker() {
             Préstamos
             <ArrowUpRight size={20} color="#9AA0AC" />
           </button>
+
+          <button
+            onClick={() => setView("objetivos")}
+            style={{
+              width: "100%",
+              maxWidth: 320,
+              padding: "22px 20px",
+              borderRadius: 16,
+              background: "#12151B",
+              border: "1px solid #2A313B",
+              color: "#fff",
+              fontSize: 17,
+              fontWeight: 700,
+              textAlign: "left",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            Objetivos
+            <Target size={20} color="#5A9CF8" />
+          </button>
         </div>
       )}
 
@@ -428,6 +570,29 @@ export default function FinanceTracker() {
             }}
           >
             <ChevronLeft size={15} /> Inicio
+          </button>
+
+          <button
+            onClick={exportLoans}
+            aria-label="Exportar préstamos"
+            style={{
+              position: "fixed",
+              top: 20,
+              right: 16,
+              zIndex: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: "#12151B",
+              border: "1px solid #2A313B",
+              color: "#E7E9EC",
+              cursor: "pointer",
+            }}
+          >
+            <Share2 size={16} />
           </button>
 
           <div className="ft-shell">
@@ -590,6 +755,232 @@ export default function FinanceTracker() {
         </>
       )}
 
+      {view === "objetivos" && (
+        <>
+          <button
+            onClick={() => setView("home")}
+            style={{
+              position: "fixed",
+              top: 20,
+              left: 16,
+              zIndex: 40,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 12px",
+              borderRadius: 10,
+              background: "#12151B",
+              border: "1px solid #2A313B",
+              color: "#E7E9EC",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <ChevronLeft size={15} /> Inicio
+          </button>
+
+          <div className="ft-shell">
+            <div style={{ paddingTop: 46 }}>
+              <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14 }}>Objetivos</div>
+
+              {/* sin objetivo y sin formulario abierto: estado vacío */}
+              {!goal && !goalFormOpen && (
+                <div style={{ ...CARD, padding: "32px 20px", textAlign: "center" }}>
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: "50%",
+                      background: "#152238",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      margin: "0 auto 14px",
+                    }}
+                  >
+                    <Target size={24} color="#5A9CF8" />
+                  </div>
+                  <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 6 }}>Todavía no tenés un objetivo</div>
+                  <div style={{ color: "#9AA0AC", fontSize: 13.5, marginBottom: 18, lineHeight: 1.5 }}>
+                    Definí algo que querés comprarte, ponele una foto y un precio, y andá sumando aportes hasta juntarlo.
+                  </div>
+                  <button onClick={openGoalForm} style={{ ...btnBase, background: "rgba(90,156,248,0.85)", color: "#0B1220", border: "none", padding: "12px 22px", display: "inline-flex" }}>
+                    Crear objetivo
+                  </button>
+                </div>
+              )}
+
+              {/* formulario: crear o editar objetivo */}
+              {goalFormOpen && (
+                <div style={{ ...CARD, padding: "20px 20px 22px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{goal ? "Editar objetivo" : "Nuevo objetivo"}</div>
+                    <button onClick={() => setGoalFormOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9AA0AC" }}>
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <label style={{ ...label, color: "#9AA0AC" }}>Nombre</label>
+                  <input
+                    value={goalForm.name}
+                    onChange={(e) => setGoalForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Ej: Notebook nueva"
+                    style={{ ...input, background: "#12151B", border: "1px solid #2A313B", color: "#E7E9EC" }}
+                  />
+
+                  <label style={{ ...label, color: "#9AA0AC" }}>Imagen</label>
+                  <label
+                    htmlFor="goal-image-input"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      width: "100%",
+                      height: 220,
+                      borderRadius: 12,
+                      border: "1px dashed #3A4048",
+                      background: goalForm.image ? `#0B0C0E` : "#12151B",
+                      backgroundImage: goalForm.image ? `url(${goalForm.image})` : "none",
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                      cursor: "pointer",
+                      marginBottom: 14,
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {!goalForm.image && (
+                      <>
+                        <ImagePlus size={26} color="#9AA0AC" />
+                        <span style={{ color: "#9AA0AC", fontSize: 13 }}>Tocá para elegir una foto</span>
+                      </>
+                    )}
+                    {goalForm.image && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: 8,
+                          right: 8,
+                          background: "rgba(0,0,0,0.55)",
+                          color: "#fff",
+                          fontSize: 11.5,
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                        }}
+                      >
+                        Cambiar foto
+                      </span>
+                    )}
+                    <input id="goal-image-input" type="file" accept="image/*" onChange={handleGoalImage} style={{ display: "none" }} />
+                  </label>
+
+                  <label style={{ ...label, color: "#9AA0AC" }}>Precio</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={goalForm.price}
+                    onChange={(e) => setGoalForm((f) => ({ ...f, price: e.target.value }))}
+                    placeholder="0"
+                    style={{ ...input, background: "#12151B", border: "1px solid #2A313B", color: "#E7E9EC" }}
+                  />
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                    {goal && (
+                      <button onClick={deleteGoal} style={{ ...btnBase, width: 46, background: "#12151B", border: "1px solid #4A2A28", color: "#E8746B" }}>
+                        <Trash2 size={17} />
+                      </button>
+                    )}
+                    <button onClick={saveGoalForm} style={{ ...btnBase, flex: 1, background: "rgba(90,156,248,0.85)", color: "#0B1220", border: "none" }}>
+                      {goal ? "Guardar cambios" : "Crear objetivo"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* objetivo creado: vista principal con barra de progreso */}
+              {goal && !goalFormOpen && (
+                <div style={{ ...CARD, padding: "20px 20px 22px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 18 }}>{goal.name}</div>
+                    <button onClick={openGoalForm} style={{ background: "#12151B", border: "1px solid #2A313B", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#E7E9EC" }}>
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      width: "100%",
+                      height: 220,
+                      borderRadius: 12,
+                      background: goal.image ? "#0B0C0E" : "#12151B",
+                      backgroundImage: goal.image ? `url(${goal.image})` : "none",
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                      display: goal.image ? "block" : "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {!goal.image && <Target size={30} color="#3A4048" />}
+                  </div>
+
+                  {(() => {
+                    const pct = Math.min(100, Math.round((goal.saved / goal.price) * 100));
+                    const done = goal.saved >= goal.price;
+                    return (
+                      <>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                          <div style={{ fontSize: 13, color: "#9AA0AC" }}>
+                            {fmt(goal.saved)} <span style={{ color: "#5A6068" }}>de {fmt(goal.price)}</span>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: done ? "#5A9CF8" : "#E7E9EC" }}>{pct}%</div>
+                        </div>
+                        <div style={{ width: "100%", height: 14, borderRadius: 8, background: "#12151B", border: "1px solid #2A313B", overflow: "hidden" }}>
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              borderRadius: 8,
+                              background: "rgba(90, 156, 248, 0.55)",
+                              boxShadow: "0 0 10px rgba(90,156,248,0.35) inset",
+                              transition: "width 400ms ease",
+                            }}
+                          />
+                        </div>
+
+                        {done ? (
+                          <div style={{ marginTop: 16, textAlign: "center", color: "#5A9CF8", fontWeight: 700, fontSize: 14.5 }}>
+                            🎉 ¡Objetivo cumplido!
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={goalAddAmount}
+                              onChange={(e) => setGoalAddAmount(e.target.value)}
+                              placeholder="Agregar monto"
+                              style={{ ...input, flex: 1, marginBottom: 0, background: "#12151B", border: "1px solid #2A313B", color: "#E7E9EC" }}
+                            />
+                            <button onClick={addGoalContribution} style={{ ...btnBase, width: 92, background: "rgba(90,156,248,0.85)", color: "#0B1220", border: "none" }}>
+                              Sumar
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {view === "finanzas" && (
         <>
         <button
@@ -613,6 +1004,29 @@ export default function FinanceTracker() {
           }}
         >
           <ChevronLeft size={15} /> Inicio
+        </button>
+
+        <button
+          onClick={exportFinanzas}
+          aria-label="Exportar movimientos"
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 16,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: "#12151B",
+            border: "1px solid #2A313B",
+            color: "#E7E9EC",
+            cursor: "pointer",
+          }}
+        >
+          <Share2 size={16} />
         </button>
 
       <div className="ft-shell">
